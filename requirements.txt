@@ -1,0 +1,6 @@
+# Exact versions tested with fpl_model.py (Python 3.11+). Install inside a virtual environment.
+numpy==2.5.3
+pandas==3.0.5
+requests==2.34.2
+PuLP==2.9.0
+highspy==1.15.1

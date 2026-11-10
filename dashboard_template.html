@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<title>FPL Model Dashboard</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: a sticky header with the gameweek and deadline, four views (Overview, Players, Fixtures, Accuracy);
+   the Overview reads like a team sheet, the Players view is a scouting report for one player above a sortable list. */
+:root {
+  --bg: #f4f5f1;
+  --panel: #ffffff;
+  --sunk: #eceee8;
+  --ink: #151815;
+  --ink-2: #4b524a;
+  --ink-3: #757c73;
+  --line: #dfe2da;
+  --accent: #2a78d6;
+  --accent-ink: #1c5cab;
+  --accent-soft: rgba(42, 120, 214, 0.12);
+  --mark: #b7bdb3;
+  --mark-strong: #8e968b;
+  --good: #0a8a0a;
+  --warn: #b77900;
+  --bad: #c43434;
+  --good-bg: rgba(12, 163, 12, 0.12);
+  --warn-bg: rgba(250, 178, 25, 0.18);
+  --bad-bg: rgba(208, 59, 59, 0.12);
+  --c-goals: #2a78d6;
+  --c-assists: #eb6834;
+  --c-cs: #1baf7a;
+  --c-defcon: #6250d6;
+  --c-bonus: #e87ba4;
+  --c-saves: #008300;
+  --c-mins: #b7bdb3;
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-num: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --r: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111311; --panel: #1a1d1a; --sunk: #222622; --ink: #eef0eb; --ink-2: #bcc2b8; --ink-3: #8c9389;
+    --line: #2d322c; --accent: #3987e5; --accent-ink: #86b6ef; --accent-soft: rgba(57, 135, 229, 0.18);
+    --mark: #4c534a; --mark-strong: #6c7469; --good: #3ccf3c; --warn: #f5b733; --bad: #ef6b6b;
+    --good-bg: rgba(12, 163, 12, 0.2); --warn-bg: rgba(250, 178, 25, 0.16); --bad-bg: rgba(208, 59, 59, 0.22);
+    --c-goals: #3987e5; --c-assists: #d95926; --c-cs: #199e70; --c-defcon: #9085e9; --c-bonus: #d55181; --c-saves: #1f9a1f; --c-mins: #4c534a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111311; --panel: #1a1d1a; --sunk: #222622; --ink: #eef0eb; --ink-2: #bcc2b8; --ink-3: #8c9389;
+  --line: #2d322c; --accent: #3987e5; --accent-ink: #86b6ef; --accent-soft: rgba(57, 135, 229, 0.18);
+  --mark: #4c534a; --mark-strong: #6c7469; --good: #3ccf3c; --warn: #f5b733; --bad: #ef6b6b;
+  --good-bg: rgba(12, 163, 12, 0.2); --warn-bg: rgba(250, 178, 25, 0.16); --bad-bg: rgba(208, 59, 59, 0.22);
+  --c-goals: #3987e5; --c-assists: #d95926; --c-cs: #199e70; --c-defcon: #9085e9; --c-bonus: #d55181; --c-saves: #1f9a1f; --c-mins: #4c534a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-ui); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel); }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* header */
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding-block: 12px 0; }
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.brand h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.brand .gw { font-family: var(--font-num); font-size: 12px; padding: 2px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.meta { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ink-3); font-size: 12px; }
+.meta b { color: var(--ink); font-weight: 600; }
+nav.tabs { flex-basis: 100%; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+nav.tabs a { text-decoration: none; color: var(--ink-3); padding: 10px 12px 9px; border-bottom: 2px solid transparent; white-space: nowrap; font-weight: 500; }
+nav.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--ink); }
+main { padding-block: 20px 48px; }
+.view[hidden] { display: none; }
+
+/* building blocks */
+.grid { display: grid; gap: 14px; }
+.tiles { grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); margin-bottom: 14px; }
+.two { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; min-width: 0; }
+.card h2 { margin: 0 0 2px; font-size: 15px; font-weight: 650; text-wrap: balance; }
+.card .sub { margin: 0 0 12px; color: var(--ink-3); font-size: 12.5px; }
+.tile .lab { color: var(--ink-3); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+.tile .big { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin-top: 4px; line-height: 1.15; }
+.tile .big small { font-size: 14px; font-weight: 600; color: var(--ink-2); letter-spacing: 0; }
+.tile .note { color: var(--ink-2); font-size: 12.5px; margin-top: 4px; }
+.linkish { background: none; border: 0; padding: 0; color: inherit; text-align: left; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.linkish:hover { text-decoration-color: var(--accent); }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--sunk); color: var(--ink-2); font-weight: 500; white-space: nowrap; }
+.chip.good { background: var(--good-bg); color: var(--good); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.chip i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block; }
+.muted { color: var(--ink-3); }
+.empty { color: var(--ink-3); font-size: 13px; padding: 8px 0; }
+
+/* team sheet */
+.sheet { display: grid; gap: 10px; background: var(--sunk); border-radius: 8px; padding: 14px 10px; }
+.line-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.line-label { text-align: center; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); font-weight: 600; }
+.pl { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px 6px; min-width: 104px; max-width: 140px; flex: 1 1 104px; text-align: center; }
+.pl:hover { border-color: var(--accent); }
+.pl .nm { font-weight: 650; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; width: 100%; }
+.pl .op { color: var(--ink-3); font-size: 11.5px; }
+.pl .xp { font-family: var(--font-num); font-weight: 700; font-size: 13px; }
+.pl .badge { position: absolute; top: -8px; right: -6px; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 800; display: grid; place-items: center; background: var(--ink); color: var(--panel); }
+.pl .badge.v { background: var(--panel); color: var(--ink); border: 1.5px solid var(--ink); }
+.pl.new { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.bench { border-top: 1px dashed var(--line); padding-top: 10px; }
+.bench .pl { opacity: 0.8; }
+
+/* transfers */
+.xfer { display: grid; grid-template-columns: 1fr auto 1fr auto; gap: 6px 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.xfer:last-child { border-bottom: 0; }
+.xfer .arrow { color: var(--ink-3); }
+.xfer .gain { font-family: var(--font-num); font-weight: 700; color: var(--good); }
+.xfer .who { min-width: 0; }
+.xfer .who small { display: block; color: var(--ink-3); font-size: 12px; }
+
+/* charts */
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { fill: var(--ink-2); font-size: 11.5px; font-family: var(--font-ui); }
+.chart .val { fill: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.chart .axis { stroke: var(--line); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+#tip { position: fixed; z-index: 20; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); max-width: 260px; }
+#tip b { display: block; font-weight: 650; }
+
+/* controls + table */
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.controls input[type="search"] { flex: 1 1 220px; max-width: 340px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.controls select { padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: none; padding: 7px 11px; color: var(--ink-2); font-size: 13px; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.check { display: inline-flex; gap: 6px; align-items: center; color: var(--ink-2); font-size: 13px; }
+.tbox { overflow: auto; max-height: 620px; border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 7px 9px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child, th.l, td.l { text-align: left; }
+thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; font-weight: 600; color: var(--ink-3); font-size: 12px; }
+thead th button { background: none; border: 0; padding: 0; color: inherit; font: inherit; }
+thead th[aria-sort] { color: var(--ink); }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--sunk); }
+tbody tr[aria-selected="true"] { background: var(--accent-soft); }
+td .bar { display: inline-block; height: 6px; border-radius: 3px; background: var(--accent); vertical-align: middle; margin-left: 6px; opacity: 0.75; }
+@media (max-width: 640px) { .hn { display: none; } }
+
+/* player profile */
+.profile-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin-bottom: 4px; }
+.profile-head h2 { font-size: 26px; margin: 0; letter-spacing: -0.02em; }
+.profile-head .full { color: var(--ink-3); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 14px; }
+.news { font-size: 13px; color: var(--ink-2); margin: -6px 0 14px; }
+.ptiles { grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); margin-bottom: 16px; gap: 10px; }
+.ptiles .tile { background: var(--sunk); border-radius: 8px; padding: 10px 12px; }
+.ptiles .big { font-size: 22px; }
+.pct-row { display: grid; grid-template-columns: minmax(110px, 1fr) 64px minmax(90px, 2fr) 70px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.pct-row:last-child { border-bottom: 0; }
+.track { position: relative; height: 8px; border-radius: 4px; background: var(--sunk); }
+.track span { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--accent); }
+.track.lowkey span { background: var(--mark-strong); }
+.stats-mini { margin-bottom: 6px; display: grid; grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); gap: 8px; }
+.stats-mini div { background: var(--sunk); border-radius: 8px; padding: 8px 10px; }
+.stats-mini b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+.stats-mini span { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+.alts { display: grid; gap: 6px; }
+.alt { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); text-align: left; }
+.alt:hover { border-color: var(--accent); }
+.alt small { color: var(--ink-3); }
+.alt .num { font-weight: 700; }
+.section-gap { margin-top: 14px; }
+
+/* fixtures heatmap */
+.heat td { text-align: center; min-width: 74px; font-size: 12px; }
+.heat td.l { text-align: left; font-weight: 650; }
+.heat .o { display: block; font-weight: 600; color: var(--ink); }
+.heat .v { display: block; color: var(--ink-2); font-family: var(--font-num); font-size: 11px; }
+.heat tbody tr { cursor: default; }
+.method { color: var(--ink-2); font-size: 13.5px; max-width: 72ch; }
+.method p { margin: 0 0 10px; }
+.method b { color: var(--ink); }
+footer { color: var(--ink-3); font-size: 12px; padding-block: 0 32px; }
+.upd { margin-bottom: 14px; padding: 12px 16px; }
+.upd summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer; list-style: none; font-weight: 600; }
+.upd summary::-webkit-details-marker { display: none; }
+.upd-more { margin-left: auto; color: var(--accent-ink); font-size: 12.5px; font-weight: 600; }
+.upd[open] .upd-more { color: var(--ink-3); }
+.upd-body { color: var(--ink-2); font-size: 13.5px; margin-top: 10px; }
+.upd-body ol { margin: 6px 0 10px; padding-left: 20px; }
+.upd-body li { margin-bottom: 4px; }
+.cmd { display: flex; gap: 8px; align-items: stretch; margin: 6px 0 10px; }
+.cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 12.5px var(--font-num); background: var(--sunk); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: var(--ink); }
+.cmd button { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 0 12px; font-weight: 600; font-size: 12.5px; }
+.cmd button:hover { border-color: var(--accent); }
+@media (prefers-reduced-motion: no-preference) { .card, .pl { transition: border-color 0.15s ease; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><h1>FPL Model</h1><span class="gw" id="gw-badge">GW</span></div>
+    <div class="meta" id="meta"></div>
+    <nav class="tabs" aria-label="Views">
+      <a href="#overview" data-view="overview">Overview</a>
+      <a href="#players" data-view="players">Players</a>
+      <a href="#fixtures" data-view="fixtures">Fixtures</a>
+      <a href="#accuracy" data-view="accuracy">Model accuracy</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="view" id="view-overview">
+    <details class="card upd" id="upd">
+      <summary><span class="chip" id="upd-chip"></span><span id="upd-head"></span><span class="upd-more">How to update</span></summary>
+      <div class="upd-body">
+        <p>This page can't run the model by itself, on purpose: it has no access to your computer or the internet. To refresh it:</p>
+        <ol>
+          <li>Made transfers? Update <b>my_team.txt</b> (players, bank, free transfers, selling prices).</li>
+          <li>Double-click <b>update.command</b> (Mac) or <b>update.bat</b> (Windows). It downloads fresh data, reruns the model and reopens this page.</li>
+          <li>Or run this in a terminal, inside the model folder:</li>
+        </ol>
+        <div class="cmd"><code id="upd-cmd"></code><button type="button" id="upd-copy">Copy</button></div>
+        <p class="muted">Best times: once after the gameweek ends (results and prices), and again a few hours before the deadline (team news).</p>
+      </div>
+    </details>
+    <div class="grid tiles" id="ov-tiles"></div>
+    <div class="grid two">
+      <div class="card">
+        <h2 id="sheet-title">Recommended lineup</h2>
+        <p class="sub" id="sheet-sub"></p>
+        <div class="sheet" id="sheet"></div>
+      </div>
+      <div class="grid">
+        <div class="card" id="xfer-card" hidden>
+          <h2>Suggested transfers</h2>
+          <p class="sub" id="xfer-sub"></p>
+          <div id="xfers"></div>
+        </div>
+        <div class="card">
+          <h2 id="cap-title">Captain options</h2>
+          <p class="sub">Bar = expected points. Line = likely range (10th to 90th percentile of 20,000 simulated matches).</p>
+          <div class="chart" id="cap-chart"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-players" hidden>
+    <div class="card" id="profile"></div>
+    <div class="card section-gap">
+      <h2>All players</h2>
+      <p class="sub">Click a row to open the player. "Next 5" is the sum of expected points over the next five gameweeks.</p>
+      <div class="controls">
+        <input type="search" id="q" placeholder="Search player or team" list="names" aria-label="Search players" autocomplete="off">
+        <datalist id="names"></datalist>
+        <div class="seg" id="pos-seg" role="group" aria-label="Position">
+          <button type="button" aria-pressed="true" data-pos="">All</button><button type="button" aria-pressed="false" data-pos="GKP">GK</button><button type="button" aria-pressed="false" data-pos="DEF">DEF</button><button type="button" aria-pressed="false" data-pos="MID">MID</button><button type="button" aria-pressed="false" data-pos="FWD">FWD</button>
+        </div>
+        <select id="price" aria-label="Maximum price">
+          <option value="99">Any price</option><option value="4.5">Up to £4.5m</option><option value="5.5">Up to £5.5m</option><option value="6.5">Up to £6.5m</option><option value="8">Up to £8.0m</option><option value="10">Up to £10.0m</option>
+        </select>
+        <label class="check"><input type="checkbox" id="avail" checked> Available only</label>
+      </div>
+      <div class="tbox">
+        <table id="ptable">
+          <thead><tr>
+            <th data-k="n"><button type="button">Player</button></th>
+            <th class="l" data-k="pos"><button type="button">Pos</button></th>
+            <th class="l hn" data-k="t"><button type="button">Team</button></th>
+            <th data-k="price"><button type="button">£m</button></th>
+            <th class="l" data-k="opp"><button type="button">Next</button></th>
+            <th data-k="xP" aria-sort="descending"><button type="button">xP</button></th>
+            <th data-k="xPh"><button type="button">Next 5</button></th>
+            <th class="hn" data-k="p90"><button type="button">Ceiling</button></th>
+            <th class="hn" data-k="haul"><button type="button">Haul %</button></th>
+            <th class="hn" data-k="emin"><button type="button">Mins</button></th>
+            <th class="hn" data-k="own"><button type="button">Own %</button></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-fixtures" hidden>
+    <div class="card">
+      <h2>Fixture ticker</h2>
+      <p class="sub">Each cell is a modelled match. Darker = better for that team's players. Teams sorted by the total over the period.</p>
+      <div class="controls">
+        <div class="seg" id="heat-seg" role="group" aria-label="Measure">
+          <button type="button" aria-pressed="true" data-m="for">Attack: expected goals</button><button type="button" aria-pressed="false" data-m="cs">Defence: clean-sheet chance</button>
+        </div>
+      </div>
+      <div class="tbox"><table class="heat" id="heat"><thead></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card section-gap">
+      <h2>Team strength</h2>
+      <p class="sub">Goals per game for and against: 75% xG and 25% real goals, pulled toward the league average with 6 games of weight.</p>
+      <div class="tbox"><table id="teams"><thead><tr><th>Team</th><th>Attack</th><th>Defence</th><th class="hn">xG</th><th class="hn">Goals</th><th class="hn">xGA</th><th class="hn">Conceded</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-accuracy" hidden>
+    <div class="grid two">
+      <div class="card">
+        <h2 id="bt-title">Prediction error by gameweek</h2>
+        <p class="sub">Average miss per player, in points (lower is better). Each week was predicted using only data from before it.</p>
+        <div class="legend" id="bt-legend"></div>
+        <div class="chart" id="bt-chart"></div>
+      </div>
+      <div class="card">
+        <h2>How the model works</h2>
+        <div class="method">
+          <p><b>Minutes.</b> Recent minutes (last 6 gameweeks, newest weighted most) give the chance of playing and of playing 60+, times FPL's injury flag.</p>
+          <p><b>Rates.</b> Per-90 xG, xA, saves, defensive actions, bonus and cards, blended with last season so a few hot games don't dominate.</p>
+          <p><b>Fixture.</b> Each team's expected goals in this match, from attack and defence ratings plus home advantage. Clean-sheet chance comes from the opponent's expected goals.</p>
+          <p><b>Points.</b> All of that priced with current FPL scoring, then simulated 20,000 times for the floor, ceiling and haul chance.</p>
+          <p><b>Picks.</b> An optimiser chooses the 15, the XI and the captain for the next five gameweeks within budget, formation and the 3-per-club rule.</p>
+          <p class="muted">One gameweek is mostly luck. Treat gaps under 0.5 xP as a coin flip and check team news before the deadline.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer class="wrap" id="foot"></footer>
+<div id="tip" hidden></div>
+
+<script id="fpl-data" type="application/json">__FPL_DATA__</script>
+<script>
+(() => {
+  "use strict";
+  const D = JSON.parse(document.getElementById("fpl-data").textContent);
+  const M = D.meta;
+  const byId = new Map(D.players.map(p => [p.id, p]));
+  const POS_ORDER = { GKP: 0, DEF: 1, MID: 2, FWD: 3 };
+  const POS_NAME = { GKP: "goalkeepers", DEF: "defenders", MID: "midfielders", FWD: "forwards" };
+
+  // ---------- helpers (all text goes in through textContent: data can never become markup)
+  function h(tag, attrs, ...kids) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v == null || v === false) continue;
+      if (k === "class") el.className = v;
+      else if (k === "style") el.style.cssText = v;
+      else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat(Infinity)) {
+      if (kid == null || kid === false) continue;
+      el.appendChild(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+    }
+    return el;
+  }
+  const NS = "http://www.w3.org/2000/svg";
+  function s(tag, attrs, text) {
+    const el = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) if (v != null) el.setAttribute(k, v);
+    if (text != null) el.textContent = String(text);
+    return el;
+  }
+  const f1 = v => (v == null ? "–" : Number(v).toFixed(1));
+  const f2 = v => (v == null ? "–" : Number(v).toFixed(2));
+  const pct = v => (v == null ? "–" : Math.round(v * 100) + "%");
+  const money = v => "£" + Number(v).toFixed(1) + "m";
+  const ordinal = n => { const t = n % 100; if (t >= 11 && t <= 13) return n + "th"; return n + ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th"); };
+
+  const tip = document.getElementById("tip");
+  function showTip(ev, title, lines) {
+    tip.replaceChildren(h("b", null, title), ...lines.map(l => h("div", null, l)));
+    tip.hidden = false;
+    const w = tip.offsetWidth, ht = tip.offsetHeight;
+    let x = ev.clientX + 14, y = ev.clientY + 14;
+    if (x + w > window.innerWidth - 8) x = ev.clientX - w - 14;
+    if (y + ht > window.innerHeight - 8) y = ev.clientY - ht - 14;
+    tip.style.left = Math.max(8, x) + "px"; tip.style.top = Math.max(8, y) + "px";
+  }
+  const hideTip = () => { tip.hidden = true; };
+  function hoverable(el, title, lines) {
+    el.addEventListener("mousemove", ev => showTip(ev, title, lines));
+    el.addEventListener("mouseleave", hideTip);
+    return el;
+  }
+
+  function status(p) {
+    const ch = p.chance;
+    if (p.status === "a" || p.status == null) return { cls: "good", txt: "Available" };
+    if (p.status === "d") return { cls: "warn", txt: `Doubtful ${ch != null ? ch + "%" : ""}`.trim() };
+    if (p.status === "i") return { cls: "bad", txt: "Injured" };
+    if (p.status === "s") return { cls: "bad", txt: "Suspended" };
+    if (p.status === "n") return { cls: "bad", txt: "Not in squad" };
+    return { cls: "bad", txt: "Unavailable" };
+  }
+  const isAvail = p => p.status === "a" || (p.status === "d" && (p.chance ?? 0) >= 50);
+
+  // ---------- header
+  document.getElementById("gw-badge").textContent = "GW" + M.next_gw;
+  const meta = document.getElementById("meta");
+  if (M.deadline) {
+    const d = new Date(M.deadline);
+    const when = d.toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    const hrs = (d - Date.now()) / 36e5;
+    const left = hrs > 0 ? (hrs < 48 ? ` (${Math.floor(hrs)}h ${Math.round((hrs % 1) * 60)}m left)` : ` (${Math.round(hrs / 24)} days)`) : " (passed)";
+    meta.append(h("span", null, "Deadline ", h("b", null, when), left));
+  }
+  const gen = new Date(M.generated).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  meta.append(h("span", null, "Data through ", h("b", null, "GW" + M.last_gw)), h("span", null, "Updated ", h("b", null, gen)));
+  // ---------- update panel: is this page stale, and how to refresh it
+  (() => {
+    const chip = document.getElementById("upd-chip"), head = document.getElementById("upd-head");
+    const now = Date.now(), dl = M.deadline ? new Date(M.deadline).getTime() : null;
+    const ageDays = (now - new Date(M.generated).getTime()) / 864e5;
+    let cls = "good", label = "Up to date", msg = `Built for GW${M.next_gw}. Rerun shortly before the deadline for the latest team news.`;
+    if (dl && now > dl) {
+      cls = "bad"; label = "Out of date";
+      msg = `The GW${M.next_gw} deadline has passed. Run the model again to plan GW${M.next_gw + 1}.`;
+    } else if (ageDays > 2) {
+      cls = "warn"; label = "Getting old";
+      msg = `Built ${Math.floor(ageDays)} days ago. Injury flags and press-conference news may have changed since.`;
+    }
+    chip.className = "chip " + cls; chip.textContent = label; head.textContent = msg;
+    if (cls !== "good") document.getElementById("upd").open = true;
+    const cmd = M.rerun || "python fpl_model.py --refresh --open";
+    document.getElementById("upd-cmd").textContent = cmd;
+    const btn = document.getElementById("upd-copy");
+    btn.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(cmd); btn.textContent = "Copied"; }
+      catch (e) {  // clipboard blocked (some browsers on file://): select the text so Ctrl/Cmd+C works
+        const r = document.createRange(); r.selectNodeContents(document.getElementById("upd-cmd"));
+        const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); btn.textContent = "Press Ctrl/Cmd+C";
+      }
+      setTimeout(() => { btn.textContent = "Copy"; }, 2500);
+    });
+  })();
+
+  document.getElementById("foot").append(
+    h("p", null, `Source: ${M.source}. Built by fpl_model.py on your computer. This page makes no network requests and sends nothing anywhere.`));
+
+  // ---------- routing
+  const views = ["overview", "players", "fixtures", "accuracy"];
+  let selected = null, booted = false;
+  function route() {
+    const hsh = location.hash.slice(1);
+    let v = views.includes(hsh) ? hsh : "overview";
+    const m = hsh.match(/^player-(\d+)$/);
+    if (m && byId.has(Number(m[1]))) { v = "players"; selectPlayer(Number(m[1]), false); }
+    for (const name of views) document.getElementById("view-" + name).hidden = name !== v;
+    document.querySelectorAll("nav.tabs a").forEach(a => a.setAttribute("aria-current", a.dataset.view === v ? "page" : "false"));
+    hideTip();
+    if (booted) requestAnimationFrame(drawAll);
+  }
+  function openPlayer(id) { location.hash = "player-" + id; window.scrollTo({ top: 0 }); }
+  window.addEventListener("hashchange", route);
+
+  // ---------- overview
+  const squad = D.squad.map(q => ({ ...q, p: byId.get(q.id) })).filter(q => q.p);
+  const starters = squad.filter(q => q.start);
+  const bench = squad.filter(q => !q.start);
+  const cap = squad.find(q => q.cap);
+  const inIds = new Set(D.transfers.map(t => t.in));
+  const xiPts = starters.reduce((a, q) => a + (q.p.xP || 0), 0) + (cap ? cap.p.xP || 0 : 0);
+  const gains = D.transfers.map(t => (byId.get(t.in)?.xPh || 0) - (byId.get(t.out)?.xPh || 0));
+  const gain = gains.reduce((a, b) => a + b, 0) - 4 * (M.hits || 0);
+
+  function tile(lab, big, note, small) {
+    return h("div", { class: "card tile" }, h("div", { class: "lab" }, lab),
+      h("div", { class: "big num" }, big, small ? h("small", null, " " + small) : null), note ? h("div", { class: "note" }, note) : null);
+  }
+  const tiles = document.getElementById("ov-tiles");
+  if (cap) tiles.append(tile("Captain", h("button", { class: "linkish", type: "button", onclick: () => openPlayer(cap.p.id) }, cap.p.n),
+    `vs ${cap.p.opp} · ${pct(cap.p.haul)} chance of 10+ points`, f1(cap.p.xP) + " xP"));
+  tiles.append(tile(`Lineup GW${M.next_gw}`, f1(xiPts), "Expected points incl. captain", "xP"));
+  if (M.mode === "team") tiles.append(tile("Transfers", D.transfers.length ? `${D.transfers.length} move${D.transfers.length > 1 ? "s" : ""}` : "Roll",
+    D.transfers.length ? `${gain >= 0 ? "+" : ""}${f1(gain)} xP over ${M.gws.length} GWs${M.hits ? `, after ${M.hits} hit` : ""}` : "No move beats keeping your team"));
+  else tiles.append(tile("Squad cost", money(squad.reduce((a, q) => a + q.p.price, 0)), `Best 15 from scratch, budget ${money(M.budget)}`));
+  tiles.append(tile("Model vs FPL's prediction", (() => {
+    const bt = D.backtest.filter(r => r.mae_ep_next != null);
+    if (!bt.length) return "–";
+    const m = bt.reduce((a, r) => a + r.mae_xP, 0) / bt.length, f = bt.reduce((a, r) => a + r.mae_ep_next, 0) / bt.length;
+    return Math.round((1 - m / f) * 100) + "% smaller miss";
+  })(), "Backtest on past gameweeks"));
+
+  document.getElementById("sheet-title").textContent = M.mode === "team" ? `Your lineup for GW${M.next_gw}` : `Best lineup for GW${M.next_gw}`;
+  document.getElementById("sheet-sub").textContent = M.mode === "team"
+    ? "After the suggested transfers (outlined in blue). C = captain, V = vice. Click a player for his profile."
+    : "From scratch under the budget. C = captain, V = vice. Click a player for his profile.";
+  function plCard(q) {
+    const p = q.p;
+    return h("button", { type: "button", class: "pl" + (inIds.has(p.id) ? " new" : ""), onclick: () => openPlayer(p.id), title: `${p.full} · ${p.t}` },
+      q.cap ? h("span", { class: "badge" }, "C") : q.vice ? h("span", { class: "badge v" }, "V") : null,
+      h("span", { class: "nm" }, p.n), h("div", { class: "op" }, `${p.t} · ${p.opp}`), h("div", { class: "xp" }, f1(p.xP)));
+  }
+  const sheet = document.getElementById("sheet");
+  for (const pos of ["FWD", "MID", "DEF", "GKP"]) {
+    const row = starters.filter(q => q.p.pos === pos).sort((a, b) => b.p.xP - a.p.xP);
+    sheet.append(h("div", { class: "line-row" }, row.map(plCard)));
+  }
+  sheet.append(h("div", { class: "line-label bench" }, "Bench"),
+    h("div", { class: "line-row" }, bench.sort((a, b) => POS_ORDER[a.p.pos] - POS_ORDER[b.p.pos]).map(plCard)));
+
+  if (M.mode === "team") {
+    document.getElementById("xfer-card").hidden = false;
+    const spent = D.transfers.reduce((t, x) => t + (byId.get(x.in)?.price || 0) - ((M.sell || {})[x.out] ?? byId.get(x.out)?.price ?? 0), 0);
+    const bankAfter = M.bank != null ? ` Bank after: ${money(M.bank - spent)}.` : "";
+    document.getElementById("xfer-sub").textContent = `${M.free_transfers} free transfer${M.free_transfers > 1 ? "s" : ""}. Gain = expected points over the next ${M.gws.length} gameweeks.${bankAfter}`;
+    const box = document.getElementById("xfers");
+    if (!D.transfers.length) box.append(h("p", { class: "empty" }, "Roll the transfer. No move gains enough to be worth it."));
+    D.transfers.forEach((t, i) => {
+      const o = byId.get(t.out), n = byId.get(t.in);
+      if (!o || !n) return;
+      box.append(h("div", { class: "xfer" },
+        h("div", { class: "who" }, h("button", { class: "linkish", type: "button", onclick: () => openPlayer(o.id) }, o.n), h("small", null, `${o.t} · ${(M.sell || {})[o.id] != null ? "sells " + money(M.sell[o.id]) : money(o.price)} · ${f1(o.xPh)} xP`)),
+        h("span", { class: "arrow", "aria-label": "replaced by" }, "→"),
+        h("div", { class: "who" }, h("button", { class: "linkish", type: "button", onclick: () => openPlayer(n.id) }, n.n), h("small", null, `${n.t} · ${money(n.price)} · ${f1(n.xPh)} xP`)),
+        h("span", { class: "gain" }, `+${f1(gains[i])}`)));
+    });
+  }
+
+  // ---------- captain range chart (horizontal bars + whiskers)
+  function rangeChart(el, rows, highlightId) {
+    const W = Math.max(el.clientWidth || 480, 300), rowH = 30, padL = 132, padR = 40, H = rows.length * rowH + 24;
+    const max = Math.max(...rows.map(r => r.p90 || r.xP)) * 1.05;
+    const x = v => padL + (v / max) * (W - padL - padR);
+    const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Expected points with likely range" });
+    for (let t = 0; t <= max; t += (max > 12 ? 4 : 2)) {
+      svg.append(s("line", { x1: x(t), x2: x(t), y1: 0, y2: H - 18, class: "axis" }));
+      svg.append(s("text", { x: x(t), y: H - 4, "text-anchor": "middle" }, t));
+    }
+    rows.forEach((r, i) => {
+      const y = i * rowH + 6, hl = r.id === highlightId;
+      const g = s("g", { style: "cursor:pointer" });
+      g.append(s("text", { x: padL - 10, y: y + 13, "text-anchor": "end", class: hl ? "val" : null }, r.n));
+      g.append(s("rect", { x: x(0), y, width: Math.max(1, x(r.xP) - x(0)), height: 18, rx: 4, fill: hl ? "var(--accent)" : "var(--mark)" }));
+      if (r.p10 != null && r.p90 != null) {
+        g.append(s("line", { x1: x(r.p10), x2: x(r.p90), y1: y + 9, y2: y + 9, stroke: "var(--ink)", "stroke-width": 1.5 }));
+        g.append(s("line", { x1: x(r.p90), x2: x(r.p90), y1: y + 4, y2: y + 14, stroke: "var(--ink)", "stroke-width": 1.5 }));
+      }
+      g.append(s("text", { x: x(Math.max(r.p90 || 0, r.xP)) + 6, y: y + 13, class: "val" }, f1(r.xP)));
+      g.append(s("rect", { x: 0, y: y - 4, width: W, height: rowH, fill: "transparent" }));
+      hoverable(g, `${r.n} (${r.t}) vs ${r.opp}`, [`Expected ${f2(r.xP)} pts`, `Likely range ${f1(r.p10)} to ${f1(r.p90)}`, `10+ points: ${pct(r.haul)} · 2 or fewer: ${pct(r.blank)}`]);
+      g.addEventListener("click", () => openPlayer(r.id));
+      svg.append(g);
+    });
+    el.replaceChildren(svg);
+  }
+  const capPool = (M.mode === "team" ? starters.map(q => q.p) : D.players.filter(p => p.emin > 45))
+    .filter(p => p.xP != null).sort((a, b) => b.xP - a.xP).slice(0, 8);
+  document.getElementById("cap-title").textContent = M.mode === "team" ? "Captain options in your XI" : "Top 8 by expected points";
+
+  // ---------- players table
+  let sortK = "xP", sortDir = -1, posF = "", q = "", maxPrice = 99, onlyAvail = true;
+  const tbody = document.querySelector("#ptable tbody");
+  const dl = document.getElementById("names");
+  [...D.players].sort((a, b) => (b.xPh || 0) - (a.xPh || 0)).forEach(p => dl.append(h("option", { value: p.n }, `${p.t} · ${p.pos}`)));
+  const norm = t => String(t).normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  function renderTable() {
+    const nq = norm(q);
+    const rows = D.players.filter(p => (!posF || p.pos === posF) && p.price <= maxPrice && (!onlyAvail || isAvail(p)) &&
+      (!nq || norm(`${p.n} ${p.full} ${p.t}`).includes(nq)));
+    const num = !["n", "pos", "t", "opp"].includes(sortK);
+    rows.sort((a, b) => num ? sortDir * ((a[sortK] ?? -1) - (b[sortK] ?? -1)) : sortDir * String(a[sortK]).localeCompare(String(b[sortK])));
+    const maxX = Math.max(...D.players.map(p => p.xP || 0), 1);
+    tbody.replaceChildren(...rows.slice(0, 400).map(p => {
+      const st = status(p);
+      return h("tr", { "aria-selected": selected === p.id ? "true" : "false", onclick: () => openPlayer(p.id) },
+        h("td", null, p.n, st.cls !== "good" ? h("span", { class: "chip " + st.cls, style: "margin-left:6px", title: p.news }, h("i"), st.txt) : null),
+        h("td", { class: "l" }, p.pos), h("td", { class: "l hn" }, p.t), h("td", { class: "num" }, f1(p.price)),
+        h("td", { class: "l" }, p.opp),
+        h("td", { class: "num" }, f2(p.xP), h("span", { class: "bar", style: `width:${Math.round(36 * (p.xP || 0) / maxX)}px` })),
+        h("td", { class: "num" }, f1(p.xPh)), h("td", { class: "num hn" }, f1(p.p90)), h("td", { class: "num hn" }, p.haul == null ? "–" : pct(p.haul)),
+        h("td", { class: "num hn" }, Math.round(p.emin || 0)), h("td", { class: "num hn" }, f1(p.own)));
+    }));
+    if (!rows.length) tbody.append(h("tr", null, h("td", { colspan: 11, class: "l muted" }, "No players match these filters.")));
+  }
+  document.getElementById("q").addEventListener("input", e => {
+    q = e.target.value; renderTable();
+    const exact = D.players.filter(p => norm(p.n) === norm(q));
+    if (exact.length === 1) openPlayer(exact[0].id);
+  });
+  document.querySelectorAll("#pos-seg button").forEach(b => b.addEventListener("click", () => {
+    posF = b.dataset.pos; document.querySelectorAll("#pos-seg button").forEach(x => x.setAttribute("aria-pressed", x === b)); renderTable();
+  }));
+  document.getElementById("price").addEventListener("change", e => { maxPrice = Number(e.target.value); renderTable(); });
+  document.getElementById("avail").addEventListener("change", e => { onlyAvail = e.target.checked; renderTable(); });
+  document.querySelectorAll("#ptable thead th").forEach(th => th.querySelector("button").addEventListener("click", () => {
+    const k = th.dataset.k;
+    sortDir = sortK === k ? -sortDir : (["n", "pos", "t", "opp"].includes(k) ? 1 : -1); sortK = k;
+    document.querySelectorAll("#ptable thead th").forEach(x => x.removeAttribute("aria-sort"));
+    th.setAttribute("aria-sort", sortDir > 0 ? "ascending" : "descending"); renderTable();
+  }));
+
+  // ---------- player profile
+  const COMP = [["minutes", "Playing time", "--c-mins"], ["goals", "Goals", "--c-goals"], ["assists", "Assists", "--c-assists"],
+    ["cs", "Clean sheet", "--c-cs"], ["defcon", "Def. contribution", "--c-defcon"], ["bonus", "Bonus", "--c-bonus"], ["saves", "Saves", "--c-saves"]];
+  function historyChart(el, p) {
+    const past = new Map();
+    for (const [gw, opp, home, mins, pts] of p.hist) {
+      const e = past.get(gw) || { gw, pts: 0, mins: 0, opp: [] };
+      e.pts += pts; e.mins += mins; if (opp) e.opp.push(opp + (home === 1 ? " (H)" : home === 0 ? " (A)" : "")); past.set(gw, e);
+    }
+    const bars = [];
+    for (let gw = 1; gw <= M.last_gw; gw++) bars.push({ gw, kind: "past", v: past.get(gw)?.pts ?? 0, d: past.get(gw) });
+    M.gws.forEach((gw, i) => bars.push({ gw, kind: "proj", v: p.h[i] || 0 }));
+    const W = Math.max(el.clientWidth || 560, 300), H = 190, padB = 34, padT = 18;
+    const lo = Math.min(0, ...bars.map(b => b.v)), hi = Math.max(4, ...bars.map(b => b.v)) * 1.12;
+    const y = v => padT + (hi - v) / (hi - lo) * (H - padB - padT);
+    const band = (W - 8) / bars.length, bw = Math.min(30, band * 0.68);
+    const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `${p.n}: points per gameweek and projection` });
+    svg.append(s("line", { x1: 0, x2: W, y1: y(0), y2: y(0), class: "axis" }));
+    const split = 4 + M.last_gw * band;
+    svg.append(s("line", { x1: split, x2: split, y1: 4, y2: H - padB + 6, stroke: "var(--ink-3)", "stroke-dasharray": "3 4" }));
+    svg.append(s("text", { x: split + 6, y: 12 }, "Projected"));
+    if (M.last_gw > 1) svg.append(s("text", { x: split - 6, y: 12, "text-anchor": "end" }, "Actual"));
+    bars.forEach((b, i) => {
+      const cx = 4 + i * band + band / 2, top = y(Math.max(b.v, 0)), bot = y(Math.min(b.v, 0));
+      const g = s("g");
+      const fill = b.kind === "past" ? "var(--mark-strong)" : "var(--accent)";
+      g.append(s("rect", { x: cx - bw / 2, y: top, width: bw, height: Math.max(bot - top, b.v === 0 ? 0 : 1), rx: 3, fill, "fill-opacity": b.kind === "proj" ? 0.85 : 1 }));
+      if (b.v === 0 && b.kind === "past") g.append(s("rect", { x: cx - bw / 2, y: y(0) - 1.5, width: bw, height: 1.5, fill: "var(--mark)" }));
+      g.append(s("text", { x: cx, y: (b.v >= 0 ? top : bot + 11) - 4, "text-anchor": "middle", class: "val" }, b.kind === "past" ? b.v : f1(b.v)));
+      g.append(s("text", { x: cx, y: H - padB + 18, "text-anchor": "middle" }, b.gw));
+      g.append(s("rect", { x: cx - band / 2, y: 0, width: band, height: H, fill: "transparent" }));
+      const lines = b.kind === "past"
+        ? (b.d ? [`${b.d.opp.join(", ") || ""}`, `${b.v} pts in ${b.d.mins} min`] : ["Did not play"])
+        : [`vs ${(D.ticker.filter(t => t.t === p.t && t.gw === b.gw).map(t => t.opp + (t.home ? " (H)" : " (A)")).join(", ")) || "no game"}`, `Expected ${f2(b.v)} pts`];
+      hoverable(g, `GW${b.gw}${b.kind === "proj" ? " · projection" : ""}`, lines);
+      svg.append(g);
+    });
+    svg.append(s("text", { x: W / 2, y: H - 2, "text-anchor": "middle" }, "Gameweek"));
+    el.replaceChildren(svg);
+  }
+  function compBars(el, p) {
+    if (!p.comp) { el.replaceChildren(h("p", { class: "empty" }, `No fixture in GW${M.next_gw}.`)); return; }
+    const pos = COMP.filter(([k]) => (p.comp[k] || 0) > 0.005);
+    const ded = (p.comp.conceded || 0) + (p.comp.cards || 0);
+    const total = pos.reduce((a, [k]) => a + p.comp[k], 0);
+    const W = Math.max(el.clientWidth || 480, 300), H = 34, x0 = 40, sc = (W - x0 - 50) / Math.max(total, 1);
+    const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Where the expected points come from" });
+    if (ded < -0.005) {
+      const r = s("rect", { x: x0 + ded * sc, y: 6, width: -ded * sc, height: 22, fill: "var(--bad)", "fill-opacity": 0.45, rx: 3 });
+      hoverable(r, "Deductions", [`${f2(ded)} pts (goals conceded, cards)`]); svg.append(r);
+    }
+    let acc = 0;
+    for (const [k, lab, c] of pos) {
+      const r = s("rect", { x: x0 + acc * sc, y: 6, width: Math.max(p.comp[k] * sc - 1.5, 1), height: 22, fill: `var(${c})` });
+      hoverable(r, lab, [`${f2(p.comp[k])} expected pts`]); svg.append(r); acc += p.comp[k];
+    }
+    svg.append(s("line", { x1: x0, x2: x0, y1: 0, y2: H, stroke: "var(--ink-3)" }));
+    svg.append(s("text", { x: x0 + acc * sc + 6, y: 22, class: "val" }, f1(total + ded)));
+    el.replaceChildren(svg);
+    const legend = h("div", { class: "legend", style: "margin-top:8px" },
+      pos.map(([k, lab, c]) => h("span", null, h("i", { style: `background:var(${c})` }), `${lab} ${f1(p.comp[k])}`)),
+      ded < -0.005 ? h("span", null, h("i", { style: "background:var(--bad);opacity:.45" }), `Deductions ${f1(ded)}`) : null);
+    el.append(legend);
+  }
+  function selectPlayer(id, scroll = true) {
+    const p = byId.get(id); if (!p) return;
+    selected = id;
+    const box = document.getElementById("profile");
+    const st = status(p);
+    const pool = D.players.filter(x => x.pos === p.pos && x.emin > 45);
+    const rank = pool.filter(x => (x.xPh || 0) > (p.xPh || 0)).length + 1;
+    const vpool = pool.map(x => ({ id: x.id, v: (x.xPh || 0) / x.price })).sort((a, b) => b.v - a.v);
+    const vrank = vpool.findIndex(x => x.id === p.id) + 1;
+    const se = p.season || {};
+    const alts = D.players.filter(x => x.pos === p.pos && x.id !== p.id && x.price <= p.price + 0.5 && (x.xPh || 0) > (p.xPh || 0) && x.emin > 45 && isAvail(x))
+      .sort((a, b) => b.xPh - a.xPh).slice(0, 5);
+    const rates = p.rates || {};
+    const pc = p.pct || {};
+    const metrics = [["xg", "r_xg", "Expected goals"], ["xa", "r_xa", "Expected assists"], ["dc", "r_dc", "Defensive actions"], ["bon", "r_bon", "Bonus points"]];
+    if (p.pos === "GKP") metrics.splice(0, 3, ["sv", "r_sv", "Saves"]);
+
+    const histEl = h("div", { class: "chart" });
+    const compEl = h("div", { class: "chart" });
+    box.replaceChildren(...[
+      h("div", { class: "profile-head" }, h("h2", null, p.n), h("span", { class: "full" }, p.full)),
+      h("div", { class: "chips" }, h("span", { class: "chip" }, `${p.pos} · ${p.t}`), h("span", { class: "chip num" }, money(p.price)),
+        h("span", { class: "chip num" }, `Owned by ${f1(p.own)}%`), h("span", { class: "chip " + st.cls }, h("i"), st.txt)),
+      p.news ? h("p", { class: "news" }, p.news) : null,
+      h("div", { class: "grid ptiles" },
+        h("div", { class: "tile" }, h("div", { class: "lab" }, `GW${M.next_gw} · ${p.opp}`), h("div", { class: "big num" }, f1(p.xP), h("small", null, " xP")),
+          h("div", { class: "note" }, p.p10 != null ? `Likely ${f1(p.p10)} to ${f1(p.p90)} pts` : "Too few minutes to simulate")),
+        h("div", { class: "tile" }, h("div", { class: "lab" }, `Next ${M.gws.length} gameweeks`), h("div", { class: "big num" }, f1(p.xPh), h("small", null, " xP")),
+          h("div", { class: "note" }, `#${rank} of ${pool.length} ${POS_NAME[p.pos]}`)),
+        h("div", { class: "tile" }, h("div", { class: "lab" }, "Haul chance (10+)"), h("div", { class: "big num" }, p.haul == null ? "–" : pct(p.haul)),
+          h("div", { class: "note" }, p.blank == null ? "" : `${pct(p.blank)} chance of 2 or fewer`)),
+        h("div", { class: "tile" }, h("div", { class: "lab" }, "Value"), h("div", { class: "big num" }, f2((p.xPh || 0) / p.price), h("small", null, " xP per £m")),
+          h("div", { class: "note" }, vrank ? `#${vrank} of ${pool.length} ${POS_NAME[p.pos]}` : "")),
+        h("div", { class: "tile" }, h("div", { class: "lab" }, "Expected minutes"), h("div", { class: "big num" }, Math.round(p.emin || 0)),
+          h("div", { class: "note" }, `${pct(p.p60)} chance of 60+`))),
+      h("div", { class: "grid two" },
+        h("div", null, h("h2", null, "Points per gameweek"), h("p", { class: "sub" }, "Grey = actual FPL points. Blue = projected expected points."), histEl),
+        h("div", null, h("h2", null, `Where GW${M.next_gw} points come from`), h("p", { class: "sub" }, "Expected points by scoring category."), compEl,
+          h("h2", { class: "section-gap" }, `Per 90 vs other ${POS_NAME[p.pos]}`),
+          h("p", { class: "sub" }, "Season rate blended with last season. Bar = percentile among regulars (270+ minutes)."),
+          h("div", null, metrics.map(([k, pk, lab]) => h("div", { class: "pct-row" }, h("span", null, lab), h("span", { class: "num" }, f2(rates[k])),
+            h("div", { class: "track" + (pc[pk] == null ? " lowkey" : "") }, h("span", { style: `width:${Math.round((pc[pk] ?? 0) * 100)}%` })),
+            h("span", { class: "num muted" }, pc[pk] == null ? "" : ordinal(Math.max(1, Math.round(pc[pk] * 100))) + " pct")))))),
+      h("h2", { class: "section-gap" }, "Season so far"),
+      h("div", { class: "stats-mini section-gap" },
+        [["Points", se.pts], ["Minutes", se.mins], ["Starts", se.starts], ["Goals", se.g], ["xG", f1(se.xg)], ["Assists", se.a], ["xA", f1(se.xa)],
+         ["Clean sheets", se.cs], ["Bonus", se.bonus], ["Def. actions", se.dc]].map(([l, v]) => h("div", null, h("b", null, v ?? 0), h("span", null, l)))),
+      h("h2", { class: "section-gap" }, "Better options at or near his price"),
+      h("p", { class: "sub" }, `Same position, up to ${money(p.price + 0.5)}, more expected points over the next ${M.gws.length} gameweeks.`),
+      alts.length ? h("div", { class: "alts" }, alts.map(a => h("button", { type: "button", class: "alt", onclick: () => openPlayer(a.id) },
+        h("span", null, h("b", null, a.n), h("small", null, ` ${a.t} · ${a.opp}`)), h("span", { class: "num" }, money(a.price)),
+        h("span", { class: "num" }, `${f1(a.xPh)} xP (+${f1(a.xPh - p.xPh)})`))))
+        : h("p", { class: "empty" }, "None. He projects best in his position at this price.")
+    ].filter(Boolean));
+    historyChart(histEl, p);
+    compBars(compEl, p);
+    renderTable();
+    if (scroll) box.scrollIntoView({ block: "start" });
+  }
+
+  // ---------- fixtures heatmap + teams
+  let heatM = "for";
+  function renderHeat() {
+    const thead = document.querySelector("#heat thead"), tb = document.querySelector("#heat tbody");
+    const teams = [...new Set(D.ticker.map(t => t.t))];
+    const val = t => heatM === "cs" ? t.cs : t.for;
+    const vals = D.ticker.map(val), lo = Math.min(...vals), hi = Math.max(...vals);
+    const score = tm => D.ticker.filter(t => t.t === tm).reduce((a, t) => a + val(t), 0);
+    teams.sort((a, b) => score(b) - score(a));
+    thead.replaceChildren(h("tr", null, h("th", null, "Team"), M.gws.map(g => h("th", { style: "text-align:center" }, "GW" + g))));
+    tb.replaceChildren(...teams.map(tm => h("tr", null, h("td", { class: "l" }, tm), M.gws.map(g => {
+      const fx = D.ticker.filter(t => t.t === tm && t.gw === g);
+      if (!fx.length) return h("td", { class: "muted" }, "Blank");
+      const v = fx.reduce((a, t) => a + val(t), 0) / fx.length;
+      const strength = Math.round(6 + 64 * (v - lo) / ((hi - lo) || 1));
+      return h("td", { style: `background:color-mix(in srgb, var(--accent) ${strength}%, transparent)` },
+        fx.map(t => [h("span", { class: "o" }, `${t.opp} ${t.home ? "(H)" : "(A)"}`), h("span", { class: "v" }, heatM === "cs" ? pct(t.cs) : f2(t.for))]));
+    }))));
+  }
+  document.querySelectorAll("#heat-seg button").forEach(b => b.addEventListener("click", () => {
+    heatM = b.dataset.m; document.querySelectorAll("#heat-seg button").forEach(x => x.setAttribute("aria-pressed", x === b)); renderHeat();
+  }));
+  document.querySelector("#teams tbody").replaceChildren(...[...D.teams].sort((a, b) => b.att - a.att).map(t => h("tr", null,
+    h("td", null, t.t), h("td", { class: "num" }, f2(t.att)), h("td", { class: "num" }, f2(t.dfn)), h("td", { class: "num hn" }, f1(t.xg)),
+    h("td", { class: "num hn" }, t.g), h("td", { class: "num hn" }, f1(t.xga)), h("td", { class: "num hn" }, t.ga))));
+
+  // ---------- backtest chart
+  function renderBacktest() {
+    const el = document.getElementById("bt-chart"), lg = document.getElementById("bt-legend");
+    const methods = [["mae_xP", "This model", "var(--accent)", 1], ["mae_ep_next", "FPL's prediction", "var(--mark-strong)", 1], ["mae_form", "Recent form", "var(--mark)", 1]]
+      .filter(([k]) => D.backtest.some(r => r[k] != null));
+    if (!D.backtest.length) { el.replaceChildren(h("p", { class: "empty" }, "Needs at least 3 finished gameweeks.")); return; }
+    lg.replaceChildren(...methods.map(([, lab, c]) => h("span", null, h("i", { style: `background:${c}` }), lab)));
+    const avg = k => D.backtest.reduce((a, r) => a + r[k], 0) / D.backtest.length;
+    if (methods.length > 1) document.getElementById("bt-title").textContent =
+      `Average miss: ${f2(avg("mae_xP"))} pts for the model vs ${f2(avg(methods[1][0]))} for ${methods[1][1].toLowerCase()}`;
+    const W = Math.max(el.clientWidth || 480, 300), H = 220, padB = 26, padT = 18;
+    const max = Math.max(...D.backtest.flatMap(r => methods.map(([k]) => r[k]))) * 1.15;
+    const y = v => padT + (1 - v / max) * (H - padB - padT);
+    const band = W / D.backtest.length, bw = Math.min(34, (band - 24) / methods.length);
+    const svg = s("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Prediction error by gameweek" });
+    svg.append(s("line", { x1: 0, x2: W, y1: y(0), y2: y(0), class: "axis" }));
+    D.backtest.forEach((r, i) => {
+      const x0 = i * band + (band - methods.length * (bw + 4)) / 2;
+      methods.forEach(([k, lab, c], j) => {
+        const x = x0 + j * (bw + 4), v = r[k];
+        const g = s("g");
+        g.append(s("rect", { x, y: y(v), width: bw, height: y(0) - y(v), rx: 4, fill: c }));
+        g.append(s("text", { x: x + bw / 2, y: y(v) - 5, "text-anchor": "middle", class: j === 0 ? "val" : null }, f2(v)));
+        hoverable(g, `GW${r.gw} · ${lab}`, [`Average miss ${f2(v)} pts`, `Top-20 picks scored ${f2(r["top20_" + k.slice(4)])} on average`]);
+        svg.append(g);
+      });
+      svg.append(s("text", { x: i * band + band / 2, y: H - 6, "text-anchor": "middle" }, "GW" + r.gw));
+    });
+    el.replaceChildren(svg);
+  }
+
+  // ---------- boot
+  function drawAll() {
+    rangeChart(document.getElementById("cap-chart"), capPool, cap ? cap.p.id : null);
+    renderHeat(); renderBacktest();
+    if (selected) selectPlayer(selected, false);
+  }
+  selected = cap ? cap.p.id : (D.players[0] && D.players[0].id);
+  route();
+  drawAll();
+  renderTable();
+  booted = true;
+  let rT; window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(drawAll, 150); });
+})();
+</script>
+</body>
+</html>

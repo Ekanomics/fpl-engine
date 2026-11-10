@@ -1,0 +1,34 @@
+# Example team file. Copy to my_team.txt (make setup does this) and edit it. Lines below the comments are a real GW11 squad.
+#
+# One player per line, spelled as in the FPL app. Accents and capitals don't matter.
+# Add the club in brackets if a name is shared, e.g. Thomas (COV).
+# "= 5.9" after a name is your SELLING price (FPL app > Transfers, tap the player). Optional, but it
+# stops the model suggesting moves you can't afford.
+#
+# Tip: put "entry = 1234567" (your team ID) instead of the 15 names to read the squad from FPL directly.
+
+bank = 1.0
+free_transfers = 1
+
+# Goalkeepers
+Tzolakis
+Verbruggen
+
+# Defenders
+Van Hecke
+Tarkowski
+De Cuyper
+Gabriel
+Thomas (COV)
+
+# Midfielders
+Gross
+Rogers
+Mbeumo
+Cherki
+Tavernier
+
+# Forwards
+Haaland
+Emersonn
+Barry

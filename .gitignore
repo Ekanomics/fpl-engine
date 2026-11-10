@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Data and outputs (regenerated every run)
+.fpl_cache/
+out/
+out_*/
+data/
+
+# Your squad stays on your machine; my_team.example.txt is the committed template
+my_team.txt
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
