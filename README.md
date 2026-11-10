@@ -13,12 +13,6 @@ and writes one offline dashboard page (out\dashboard.html). Runs only on your co
 - update.bat              weekly: refresh data, run the model, open the dashboard ("update.bat auto" = no pause)
 - player.bat              one player in the terminal: player.bat Haaland
 
-## First-time setup
-1. Install Python 3.12 (python.org, or in PowerShell: winget install Python.Python.3.12).
-2. Unzip this folder to C:\Users\<you>\fpl-engine (not inside OneDrive).
-3. Double-click setup.bat.
-4. Edit my_team.txt, then double-click update.bat.
-
 ## Every gameweek
 Edit my_team.txt after transfers, then double-click update.bat (after the gameweek ends, and on deadline morning).
 If the FPL site doesn't answer, it retries with the GitHub copy of the data automatically.
